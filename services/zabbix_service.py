@@ -126,18 +126,17 @@ def get_memory_data(kode: str) -> dict:
 
 def get_disk_data(kode: str) -> dict:
     """Get Disk data for a specific host code"""
-    hostid = DISK_HOST_MAP.get(kode)
-    
-    if not hostid:
-        raise ValueError(f"Kode {kode} tidak ditemukan dalam DISK_HOST_MAP.")
+    itemid = ITEMIDS_DISK_MAP.get(kode)
+
+    if not itemid:
+        raise ValueError(f"Kode {kode} tidak ditemukan dalam ITEMIDS_DISK_MAP.")
     
     payload = {
         "jsonrpc": "2.0",
         "method": "item.get",
         "params": {
             "output": ["itemid", "name", "value_type", "lastvalue", "hostid"],
-            "hostids": hostid,
-            "search": {"name": "Space utilization"}
+            "itemids": [itemid]
         },
         "auth": ZABBIX_AUTH,
         "id": 2
@@ -148,27 +147,18 @@ def get_disk_data(kode: str) -> dict:
         response.raise_for_status()
         data = response.json()
         
-        if "result" in data and len(data["result"]) > 0:
-            # Filter untuk /data atau /data-first item
-            target_item = next(
-                (item for item in data["result"]
-                 if item["name"] in ["/data: Space utilization", "/data-first: Space utilization"]),
-                None
-            )
-            
-            if target_item:
-                value = float(target_item["lastvalue"])
-                return {
-                    "kode": kode,
-                    "value": value,
-                    "status": disk_status(value),
-                    "item_name": target_item["name"],
-                    "checked_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                }
-            else:
-                raise ValueError(f"Tidak ada item /data atau /data-first ditemukan untuk host {kode}.")
-        else:
+        if "result" not in data or not data["result"]:
             raise ValueError(f"Data Disk untuk host {kode} tidak ditemukan.")
+
+        target_item = data["result"][0]
+        value = float(target_item["lastvalue"])
+        return {
+            "kode": kode,
+            "value": value,
+            "status": disk_status(value),
+            "item_name": target_item["name"],
+            "checked_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        }
     except requests.exceptions.ConnectionError:
         logger.exception("Koneksi Zabbix gagal")
         raise Exception("⚠️ Koneksi monitoring terputus. Periksa VPN dan tunnel.")

@@ -30,33 +30,33 @@ async def load_cogs():
         logger.error(f"Failed to load Zabbix cogs: {e}")
 
 
-@bot.command(name="hanes")
-async def hanes(ctx, mode: str = "run"):
-    mode = (mode or "run").lower()
-    ensure_hanes_env()
+# @bot.command(name="hanes")
+# async def hanes(ctx, mode: str = "run"):
+#     mode = (mode or "run").lower()
+#     ensure_hanes_env()
 
-    if mode in {"run", "refresh", "check"}:
-        await ctx.send("Mengeksekusi monitoring Hanes... ini mungkin memerlukan beberapa detik.")
-        try:
-            result = await asyncio.to_thread(run_hanes_monitor)
-            summary_text = get_latest_run_summary()
-            exit_code = result.get("exit_code", 0)
-            if summary_text:
-                await ctx.send(summary_text)
-            await ctx.send(f"Monitoring selesai. Exit code: {exit_code}")
-        except Exception as exc:
-            await ctx.send(f"Monitoring Hanes gagal: {exc}")
-        return
+#     if mode in {"run", "refresh", "check"}:
+#         await ctx.send("Mengeksekusi monitoring Hanes... ini mungkin memerlukan beberapa detik.")
+#         try:
+#             result = await asyncio.to_thread(run_hanes_monitor)
+#             summary_text = get_latest_run_summary()
+#             exit_code = result.get("exit_code", 0)
+#             if summary_text:
+#                 await ctx.send(summary_text)
+#             await ctx.send(f"Monitoring selesai. Exit code: {exit_code}")
+#         except Exception as exc:
+#             await ctx.send(f"Monitoring Hanes gagal: {exc}")
+#         return
 
-    if mode in {"last", "summary", "status"}:
-        summary_text = get_latest_run_summary()
-        if summary_text:
-            await ctx.send(summary_text)
-        else:
-            await ctx.send("Belum ada hasil monitoring Hanes yang tersimpan.")
-        return
+#     if mode in {"last", "summary", "status"}:
+#         summary_text = get_latest_run_summary()
+#         if summary_text:
+#             await ctx.send(summary_text)
+#         else:
+#             await ctx.send("Belum ada hasil monitoring Hanes yang tersimpan.")
+#         return
 
-    await ctx.send("Format perintah: !hanes run | !hanes last | !hanes status")
+#     await ctx.send("Format perintah: !hanes run | !hanes last | !hanes status")
 
 
 @bot.command(name="ping")

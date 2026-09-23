@@ -137,7 +137,7 @@ def build_global_report_text(reports):
         "ZABBIX",
         "",
         "🟢 Server : Running",
-        f"🖥️ Hosts  : {monitored_count}/{total_hosts} monitored",
+        f"🖥️ Hosts  : {monitored_count}/{total_hosts} monitored + 11 Pending Host",
     ]
 
     # ========================================================

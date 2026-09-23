@@ -25,6 +25,44 @@ from config import REPORT_CHANNEL_ID
 logger = logging.getLogger(__name__)
 
 
+def split_discord_message(text: str, limit: int = 2000) -> list[str]:
+    """Split text into Discord-safe chunks without breaking normal lines."""
+    if not text:
+        return []
+
+    body_limit = max(1, limit - 64)
+    chunks = []
+    current_lines = []
+    current_length = 0
+
+    for line in text.splitlines():
+        line_parts = [line[index:index + body_limit] for index in range(0, len(line), body_limit)] or [""]
+
+        for part in line_parts:
+            part_length = len(part) + (1 if current_lines else 0)
+
+            if current_lines and current_length + part_length > body_limit:
+                chunks.append("\n".join(current_lines))
+                current_lines = []
+                current_length = 0
+
+            current_lines.append(part)
+            current_length += len(part) + (1 if len(current_lines) > 1 else 0)
+
+    if current_lines:
+        chunks.append("\n".join(current_lines))
+
+    if len(chunks) <= 1:
+        return chunks
+
+    total = len(chunks)
+    return [
+        chunk
+        for index, chunk in enumerate(chunks, start=1)
+    ]
+
+
+
 class ZabbixCog(commands.Cog):
 
     def __init__(self, bot):
@@ -564,6 +602,7 @@ class ZabbixCog(commands.Cog):
 
         async with aiohttp.ClientSession() as session:
 
+            # WEBHOOK TARGET
             webhook = discord.Webhook.from_url(
                 # TEST_WEBHOOK_URL,
                 # MAIN_WEBHOOK_URL,
@@ -626,9 +665,8 @@ class ZabbixCog(commands.Cog):
                 reports
             )
 
-            await webhook.send(
-                summary
-            )
+            for summary_part in split_discord_message(summary):
+                await webhook.send(summary_part)
 
         logger.info(
             "VM report selesai dikirim: %d VM",

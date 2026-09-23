@@ -441,7 +441,6 @@ def generate_vm_report(
         )
 
     else:
-        # Bersihkan area supaya tidak kotak putih
         ax_disk.set_facecolor(BACKGROUND_COLOR)
         ax_disk.set_xticks([])
         ax_disk.set_yticks([])
@@ -510,45 +509,6 @@ def generate_vm_report(
         fontweight="bold",
     )
 
-    # ========================================================
-    # DISK CHART
-    # ========================================================
-
-    # ax_disk = fig.add_subplot(grid[0, 0])
-
-    # if disk["history"]:
-
-    #     draw_metric_chart(
-    #         ax_disk,
-    #         disk["history"],
-    #         "DISK UTILIZATION",
-    #     )
-
-    # else:
-
-    #     ax_disk.set_facecolor(BACKGROUND_COLOR)
-
-    #     ax_disk.set_xticks([])
-    #     ax_disk.set_yticks([])
-
-    #     for spine in ax_disk.spines.values():
-    #         spine.set_visible(False)
-
-    #     ax_disk.text(
-    #         0.0,
-    #         1.02,
-    #         "DISK UTILIZATION",
-    #         transform=ax_disk.transAxes,
-    #         ha="left",
-    #         va="bottom",
-    #         color=TEXT_COLOR,
-    #         fontsize=14,
-    #         fontweight="bold",
-    #     )
-
-    # ========================================================
-    # METRIC SUMMARY
-    # ========================================================
 
     metrics = [
         ("CPU", cpu),
