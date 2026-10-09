@@ -14,3 +14,7 @@ __pycache__/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Scheduler runtime state
+reports/output/.report_scheduler_state
+reports/output/.alert_event_state

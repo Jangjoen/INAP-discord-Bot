@@ -553,10 +553,11 @@ def format_problem_duration(clock) -> str:
 
     return f"{minutes}m"
 
-def get_active_problems() -> list:
+def get_active_problems(hours=None) -> list:
     """
     Mengambil semua problem aktif dari Zabbix
-    beserta host dan durasinya.
+    beserta host dan durasinya. Jika hours diisi, hanya problem
+    yang mulai dalam periode tersebut yang dikembalikan.
     """
 
     payload = {
@@ -604,6 +605,16 @@ def get_active_problems() -> list:
             for problem in problems
             if "PostgreSQL:" not in problem.get("name", "")
         ]
+
+        if hours is not None:
+            time_from = int(
+                datetime.datetime.now().timestamp() - hours * 3600
+            )
+            problems = [
+                problem
+                for problem in problems
+                if int(problem.get("clock", 0)) >= time_from
+            ]
 
         formatted_problems = []
 
@@ -751,6 +762,100 @@ def get_active_problems() -> list:
         raise Exception(
             f"⚠️ Error Zabbix: {str(e)}"
         )
+
+def get_resolved_problems(hours=2) -> list:
+    """Mengambil recovery event Zabbix yang terjadi dalam periode report."""
+
+    time_till = int(datetime.datetime.now().timestamp())
+    time_from = time_till - hours * 3600
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "event.get",
+        "params": {
+            "output": [
+                "eventid",
+                "objectid",
+                "clock",
+                "name",
+                "severity",
+            ],
+            "source": 0,
+            "object": 0,
+            "value": 0,
+            "time_from": time_from,
+            "time_till": time_till,
+            "selectHosts": [
+                "hostid",
+                "host",
+                "name",
+            ],
+            "sortfield": ["clock", "eventid"],
+            "sortorder": "DESC",
+        },
+        "auth": ZABBIX_AUTH,
+        "id": 2,
+    }
+
+    try:
+        response = requests.post(
+            ZABBIX_URL,
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            raise Exception(
+                data["error"].get("data", "Zabbix API error")
+            )
+
+        resolved_problems = []
+
+        for event in data.get("result", []):
+            if "PostgreSQL:" in event.get("name", ""):
+                continue
+
+            severity_code = str(event.get("severity", "0"))
+            hosts = event.get("hosts", [])
+
+            resolved_problems.append({
+                "eventid": event.get("eventid"),
+                "objectid": event.get("objectid"),
+                "name": event.get("name", "Unknown problem"),
+                "severity_code": severity_code,
+                "severity_emoji": SEVERITY_EMOJI.get(
+                    severity_code,
+                    "⚪",
+                ),
+                "severity": severity_code,
+                "hosts": [
+                    host.get("name") or host.get("host")
+                    for host in hosts
+                ],
+                "clock": event.get("clock"),
+                "resolved_at": event.get("clock"),
+            })
+
+        return resolved_problems
+
+    except requests.exceptions.ConnectionError:
+        logger.exception("Koneksi Zabbix gagal")
+        raise Exception(
+            "⚠️ Koneksi monitoring terputus. Periksa VPN dan tunnel."
+        )
+    except requests.exceptions.Timeout:
+        logger.exception("Timeout koneksi Zabbix")
+        raise Exception(
+            "⚠️ Server monitoring tidak merespons dalam 10 detik."
+        )
+    except requests.exceptions.RequestException:
+        logger.exception("Request Zabbix gagal")
+        raise Exception("⚠️ Gagal menghubungi server monitoring.")
+    except Exception as e:
+        logger.exception("Error saat mengambil resolved problems")
+        raise Exception(f"⚠️ Error Zabbix: {str(e)}")
     
 def get_problem_hosts(problem):
     """
@@ -1186,3 +1291,66 @@ def get_recent_events(limit: int = 20) -> list:
         raise Exception(f"⚠️ Error: {str(e)}")
     
     return snapshot
+
+
+def get_zabbix_events_after(eventid: int | None = None) -> list:
+    """Get trigger events after an event ID, or the latest event for baseline."""
+    params = {
+        "output": [
+            "eventid",
+            "objectid",
+            "clock",
+            "name",
+            "severity",
+            "value",
+        ],
+        "source": 0,
+        "object": 0,
+        "selectHosts": ["host", "name"],
+        "sortfield": "eventid",
+        "sortorder": "ASC" if eventid is not None else "DESC",
+        "limit": 1000 if eventid is not None else 1,
+    }
+
+    if eventid is not None:
+        params["eventid_from"] = str(eventid + 1)
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "event.get",
+        "params": params,
+        "auth": ZABBIX_AUTH,
+        "id": 2,
+    }
+
+    try:
+        response = requests.post(ZABBIX_URL, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if "error" in data:
+            raise RuntimeError(
+                data["error"].get("data", "Zabbix API error")
+            )
+
+        events = []
+        for event in data.get("result", []):
+            hosts = event.get("hosts", [])
+            events.append({
+                "eventid": int(event.get("eventid", 0)),
+                "objectid": event.get("objectid"),
+                "clock": int(event.get("clock", 0)),
+                "name": event.get("name", "Unknown problem"),
+                "severity": int(event.get("severity", 0)),
+                "value": int(event.get("value", 0)),
+                "hosts": [
+                    host.get("name") or host.get("host", "Unknown")
+                    for host in hosts
+                ],
+            })
+
+        return events
+
+    except requests.exceptions.RequestException as error:
+        logger.exception("Gagal mengambil event baru dari Zabbix")
+        raise RuntimeError("Gagal mengambil event baru dari Zabbix") from error

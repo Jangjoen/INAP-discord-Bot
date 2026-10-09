@@ -89,20 +89,21 @@ def build_report_summary(
     """
 
     healthy = 0
-    warning = 0
-    critical = 0
     unavailable = 0
+    warning_items = []
+    critical_items = []
 
     for item in reports:
 
         report = item["report"]
+        kode = item.get("kode", report.get("kode", "Unknown"))
 
         statuses = []
 
-        for metric in [
-            "cpu",
-            "memory",
-            "disk",
+        for metric, label in [
+            ("cpu", "CPU"),
+            ("memory", "Memory"),
+            ("disk", "Disk"),
         ]:
 
             data = report.get(metric)
@@ -113,9 +114,21 @@ def build_report_summary(
             status = data.get("status")
 
             if status is not None:
-                statuses.append(
-                    status.lower()
+                normalized_status = status.lower()
+                statuses.append(normalized_status)
+
+                current = data.get("current")
+                percentage = (
+                    f"{current:.0f}%"
+                    if current is not None
+                    else "N/A"
                 )
+                item_text = f"- {label} INAP {kode} - {percentage}"
+
+                if normalized_status == "warning":
+                    warning_items.append(item_text)
+                elif normalized_status == "critical":
+                    critical_items.append(item_text)
 
         # =========================
         # STATUS VM
@@ -127,21 +140,26 @@ def build_report_summary(
 
         elif "critical" in statuses:
 
-            critical += 1
+            continue
 
         elif "warning" in statuses:
 
-            warning += 1
+            continue
 
         else:
 
             healthy += 1
 
+    warning_list = "\n".join(warning_items) or "-"
+    critical_list = "\n".join(critical_items) or "-"
+
     return (
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "SUMMARY\n\n"
-        f"🟢 Healthy     : {healthy}\n"
-        f"🟡 Warning     : {warning}\n"
-        f"🔴 Critical    : {critical}\n"
+        f"🟢 Healthy     : {healthy}\n\n"
+        f"🟡 Warning     : {len(warning_items)}\n"
+        f"{warning_list}\n\n"
+        f"🔴 Critical    : {len(critical_items)}\n"
+        f"{critical_list}\n\n"
         f"⚪ N/A         : {unavailable}"
     )

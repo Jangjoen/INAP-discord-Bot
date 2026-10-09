@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
 import logging
+from pathlib import Path
 from config import DISCORD_WEBHOOK_URL, TEST_WEBHOOK_URL, MAIN_WEBHOOK_URL, MAIN2_WEBHOOK_URL
 import aiohttp
 from services.global_report_services import build_global_report_text
@@ -15,6 +16,7 @@ from services.zabbix_service import (
     get_all_disk_data,
     get_active_problems,
     get_recent_events,
+    get_zabbix_events_after,
 )
 from services.report_services import (
     generate_all_vm_reports,
@@ -23,6 +25,66 @@ from services.report_services import (
 from config import REPORT_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
+
+REPORT_RETRY_SECONDS = 60
+ALERT_POLL_SECONDS = 30
+REPORT_STATE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "reports"
+    / "output"
+    / ".report_scheduler_state"
+)
+ALERT_STATE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "reports"
+    / "output"
+    / ".alert_event_state"
+)
+
+
+def get_report_slot(now: datetime) -> datetime:
+    slot = now.replace(minute=0, second=0, microsecond=0)
+    if slot.hour % 2 == 0:
+        slot -= timedelta(hours=1)
+    return slot
+
+
+def load_last_report_slot():
+    try:
+        value = REPORT_STATE_PATH.read_text(encoding="ascii").strip()
+        return datetime.fromisoformat(value)
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        logger.warning("Invalid report scheduler state; treating slot as unreported")
+        return None
+
+
+def save_last_report_slot(slot: datetime) -> None:
+    REPORT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = REPORT_STATE_PATH.with_suffix(".tmp")
+    temporary_path.write_text(
+        slot.isoformat(timespec="minutes"),
+        encoding="ascii",
+    )
+    temporary_path.replace(REPORT_STATE_PATH)
+
+
+def load_alert_event_id():
+    try:
+        return int(ALERT_STATE_PATH.read_text(encoding="ascii").strip())
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        logger.warning("Invalid alert event state; will establish a new baseline")
+        return None
+
+
+def save_alert_event_id(eventid: int) -> None:
+    ALERT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = ALERT_STATE_PATH.with_suffix(".tmp")
+    temporary_path.write_text(str(eventid), encoding="ascii")
+    temporary_path.replace(ALERT_STATE_PATH)
 
 
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
@@ -71,9 +133,13 @@ class ZabbixCog(commands.Cog):
         self.report_scheduler_task = asyncio.create_task(
             self.report_scheduler()
         )
+        self.problem_alert_task = asyncio.create_task(
+            self.problem_alert_monitor()
+        )
 
     def cog_unload(self):
         self.report_scheduler_task.cancel()
+        self.problem_alert_task.cancel()
     
     @commands.command(name="cpu")
     async def cpu_command(self, ctx, kode: str = None):
@@ -598,7 +664,7 @@ class ZabbixCog(commands.Cog):
             logger.warning(
                 "Tidak ada report yang berhasil dibuat."
             )
-            return
+            return False
 
         async with aiohttp.ClientSession() as session:
 
@@ -662,7 +728,8 @@ class ZabbixCog(commands.Cog):
             # ====================================================
 
             summary = build_global_report_text(
-                reports
+                reports,
+                hours=2,
             )
 
             for summary_part in split_discord_message(summary):
@@ -672,62 +739,7 @@ class ZabbixCog(commands.Cog):
             "VM report selesai dikirim: %d VM",
             len(reports),
         )
-
-
-    async def wait_until_next_report(self):
-        """
-        Menunggu jadwal report:
-
-        01:00
-        03:00
-        05:00
-        ...
-        23:00
-        """
-
-        now = datetime.now()
-
-        # Cari boundary ganjil berikutnya
-        if now.hour % 2 == 0:
-            next_hour = now.hour + 1
-        else:
-            next_hour = now.hour + 2
-
-        if next_hour >= 24:
-
-            next_run = (
-                now.replace(
-                    hour=1,
-                    minute=0,
-                    second=0,
-                    microsecond=0,
-                )
-                + timedelta(days=1)
-            )
-
-        else:
-
-            next_run = now.replace(
-                hour=next_hour,
-                minute=0,
-                second=0,
-                microsecond=0,
-            )
-
-        wait_seconds = (
-            next_run - now
-        ).total_seconds()
-
-        logger.info(
-            "Next automatic report: %s",
-            next_run.strftime(
-                "%d/%m/%Y %H:%M:%S"
-            ),
-        )
-
-        await asyncio.sleep(
-            wait_seconds
-        )
+        return True
 
 
     async def report_scheduler(self):
@@ -735,22 +747,142 @@ class ZabbixCog(commands.Cog):
         await self.bot.wait_until_ready()
 
         while not self.bot.is_closed():
+            now = datetime.now()
+            current_slot = get_report_slot(now)
+            last_reported_slot = load_last_report_slot()
 
-            await self.wait_until_next_report()
+            if (
+                last_reported_slot is None
+                or current_slot > last_reported_slot
+            ):
+                successful = False
 
+                try:
+                    logger.info(
+                        "Automatic VM report started for slot %s",
+                        current_slot.strftime("%d/%m/%Y %H:%M"),
+                    )
+                    successful = await self.send_vm_reports()
+
+                    if successful:
+                        save_last_report_slot(current_slot)
+                    else:
+                        logger.warning(
+                            "Report slot %s belum terkirim; akan dicoba lagi.",
+                            current_slot.strftime("%d/%m/%Y %H:%M"),
+                        )
+
+                except Exception:
+                    successful = False
+                    logger.exception(
+                        "Automatic VM report failed; will retry"
+                    )
+
+                if not successful:
+                    await asyncio.sleep(REPORT_RETRY_SECONDS)
+                    continue
+
+                continue
+
+            next_slot = current_slot + timedelta(hours=2)
+            wait_seconds = max(
+                1,
+                (next_slot - datetime.now()).total_seconds(),
+            )
+            logger.info(
+                "Next automatic report: %s",
+                next_slot.strftime("%d/%m/%Y %H:%M:%S"),
+            )
+            await asyncio.sleep(wait_seconds)
+
+
+    async def send_problem_alert(self, event: dict) -> None:
+        if not MAIN2_WEBHOOK_URL:
+            raise RuntimeError("MAIN2_WEBHOOK_URL belum dikonfigurasi")
+
+        severity_labels = {
+            0: "Not classified",
+            1: "Information",
+            2: "Warning",
+            3: "Average",
+            4: "High",
+            5: "Disaster",
+        }
+        severity_colors = {
+            0: discord.Color.light_grey(),
+            1: discord.Color.blue(),
+            2: discord.Color.gold(),
+            3: discord.Color.orange(),
+            4: discord.Color.red(),
+            5: discord.Color.dark_red(),
+        }
+        severity = event["severity"]
+        hosts = ", ".join(event["hosts"]) or "Unknown"
+        timestamp = datetime.fromtimestamp(event["clock"])
+
+        embed = discord.Embed(
+            title="🚨 Zabbix Problem Baru",
+            description=event["name"],
+            color=severity_colors.get(severity, discord.Color.red()),
+            timestamp=timestamp,
+        )
+        embed.add_field(name="Host", value=hosts, inline=False)
+        embed.add_field(
+            name="Severity",
+            value=severity_labels.get(severity, "Unknown"),
+            inline=True,
+        )
+        embed.add_field(name="Event ID", value=str(event["eventid"]), inline=True)
+
+        async with aiohttp.ClientSession() as session:
+            webhook = discord.Webhook.from_url(
+                MAIN2_WEBHOOK_URL,
+                session=session,
+            )
+            await webhook.send(embed=embed)
+
+
+    async def problem_alert_monitor(self):
+        await self.bot.wait_until_ready()
+        last_event_id = load_alert_event_id()
+
+        while not self.bot.is_closed():
             try:
-
-                logger.info(
-                    "Automatic VM report started"
+                events = await asyncio.to_thread(
+                    get_zabbix_events_after,
+                    last_event_id,
                 )
 
-                await self.send_vm_reports()
+                if last_event_id is None:
+                    if events:
+                        last_event_id = max(
+                            event["eventid"] for event in events
+                        )
+                        save_alert_event_id(last_event_id)
+                        logger.info(
+                            "Zabbix alert monitor baseline set to event %s",
+                            last_event_id,
+                        )
+                else:
+                    for event in events:
+                        if event["value"] == 1:
+                            await self.send_problem_alert(event)
+                            logger.info(
+                                "Sent Zabbix problem alert for event %s",
+                                event["eventid"],
+                            )
 
+                        last_event_id = event["eventid"]
+                        save_alert_event_id(last_event_id)
+
+            except asyncio.CancelledError:
+                raise
             except Exception:
-
                 logger.exception(
-                    "Automatic VM report failed"
+                    "Zabbix problem alert check failed; will retry"
                 )
+
+            await asyncio.sleep(ALERT_POLL_SECONDS)
 
 async def setup(bot):
     """Load ZabbixCog into the bot"""

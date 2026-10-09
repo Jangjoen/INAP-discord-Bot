@@ -6,6 +6,7 @@ from services.zabbix_service import get_active_problems_with_hosts
 from services.zabbix_service import (
     get_active_problems,
     get_monitored_hosts,
+    get_resolved_problems,
 )
 from services.report_services import build_report_summary
 
@@ -18,7 +19,7 @@ SEVERITY_EMOJI = {
     "5": "🔴",
 }
 
-def build_global_report_text(reports):
+def build_global_report_text(reports, hours=2, include_resolved=False):
     """
     Membuat teks summary lengkap untuk Discord.
     """
@@ -144,10 +145,16 @@ def build_global_report_text(reports):
     # ACTIVE PROBLEMS
     # ========================================================
 
-    problems = get_active_problems()
+    active_problems = get_active_problems(hours=hours)
+    resolved_problems = (
+        get_resolved_problems(hours=hours)
+        if include_resolved
+        else None
+    )
 
     problems_text = format_active_problems(
-        problems
+        active_problems,
+        resolved_problems,
     )
 
     # ========================================================
@@ -331,78 +338,64 @@ def format_global_summary(global_data):
 
     return "\n".join(lines)
 
-def format_active_problems(problems: list) -> str:
-
-    if not problems:
-        return (
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "ACTIVE PROBLEMS\n\n"
-            "🟢 No active problems"
-        )
-
+def format_active_problems(
+    problems: list,
+    resolved_problems: list | None = None,
+) -> str:
     lines = [
         "━━━━━━━━━━━━━━━━━━━━━━",
         "PROBLEMS",
         "",
     ]
 
-    for problem in problems:
+    sections = [("ACTIVE", problems)]
+    if resolved_problems is not None:
+        sections.append(("RESOLVED", resolved_problems))
 
-        name = problem.get(
-            "name",
-            "Unknown problem"
-        )
+    for section, section_problems in sections:
+        lines.extend([
+            f"{section} ({len(section_problems)})",
+            "",
+        ])
 
-        emoji = problem.get(
-            "severity_emoji",
-            "⚪"
-        )
-
-        duration = problem.get(
-            "duration",
-            "Unknown"
-        )
-
-        hosts = problem.get(
-            "hosts",
-            []
-        )
-
-        # ----------------------------------------------------
-        # Problem name
-        # ----------------------------------------------------
-
-        lines.append(
-            f"{emoji} {name}"
-        )
-
-        # ----------------------------------------------------
-        # Hosts
-        # ----------------------------------------------------
-
-        seen_hosts = set()
-
-        for host in hosts:
-
-            if host in seen_hosts:
-                continue
-
-            seen_hosts.add(host)
-
+        if not section_problems:
             lines.append(
-                f"   • {host}"
+                "🟢 No active problems"
+                if section == "ACTIVE"
+                else "No resolved problems in this period"
             )
+            lines.append("")
+            continue
 
-        # ----------------------------------------------------
-        # Duration
-        # ----------------------------------------------------
+        for problem in section_problems:
+            name = problem.get("name", "Unknown problem")
+            emoji = problem.get("severity_emoji", "⚪")
+            hosts = problem.get("hosts", [])
 
-        lines.append(
-            f"Duration: {duration}"
-        )
+            lines.append(f"{emoji} {name}")
 
-        lines.append("")
+            seen_hosts = set()
+            for host in hosts:
+                if host in seen_hosts:
+                    continue
 
-    return "\n".join(
-        lines
-    ).rstrip()
+                seen_hosts.add(host)
+                lines.append(f"   • {host}")
+
+            if section == "ACTIVE":
+                lines.append(
+                    f"Duration: {problem.get('duration', 'Unknown')}"
+                )
+            else:
+                resolved_at = problem.get("resolved_at")
+                if resolved_at:
+                    resolved_time = datetime.fromtimestamp(
+                        int(resolved_at)
+                    ).strftime("%d/%m %H:%M")
+                else:
+                    resolved_time = "Unknown"
+                lines.append(f"Resolved at: {resolved_time}")
+
+            lines.append("")
+
+    return "\n".join(lines).rstrip()
