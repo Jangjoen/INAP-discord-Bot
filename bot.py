@@ -4,7 +4,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from config import DISCORD_TOKEN, ensure_hanes_env
+from config import DISCORD_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
