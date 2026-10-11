@@ -17,6 +17,8 @@ from services.zabbix_service import (
     get_active_problems,
     get_recent_events,
     get_zabbix_events_after,
+    get_latest_zabbix_event_id,
+    is_unresolved_problem_event,
 )
 from services.report_services import (
     generate_all_vm_reports,
@@ -34,14 +36,6 @@ REPORT_STATE_PATH = (
     / "output"
     / ".report_scheduler_state"
 )
-ALERT_STATE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "reports"
-    / "output"
-    / ".alert_event_state"
-)
-
-
 def get_report_slot(now: datetime) -> datetime:
     slot = now.replace(minute=0, second=0, microsecond=0)
     if slot.hour % 2 == 0:
@@ -68,23 +62,6 @@ def save_last_report_slot(slot: datetime) -> None:
         encoding="ascii",
     )
     temporary_path.replace(REPORT_STATE_PATH)
-
-
-def load_alert_event_id():
-    try:
-        return int(ALERT_STATE_PATH.read_text(encoding="ascii").strip())
-    except FileNotFoundError:
-        return None
-    except ValueError:
-        logger.warning("Invalid alert event state; will establish a new baseline")
-        return None
-
-
-def save_alert_event_id(eventid: int) -> None:
-    ALERT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = ALERT_STATE_PATH.with_suffix(".tmp")
-    temporary_path.write_text(str(eventid), encoding="ascii")
-    temporary_path.replace(ALERT_STATE_PATH)
 
 
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
@@ -129,6 +106,9 @@ class ZabbixCog(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.report_lock = asyncio.Lock()
+        self.report_in_progress = asyncio.Event()
+        self.alert_baseline_ready = asyncio.Event()
 
         self.report_scheduler_task = asyncio.create_task(
             self.report_scheduler()
@@ -651,6 +631,17 @@ class ZabbixCog(commands.Cog):
     # -------------------------------------------
 
     async def send_vm_reports(self):
+        await self.alert_baseline_ready.wait()
+
+        async with self.report_lock:
+            self.report_in_progress.set()
+            try:
+                return await self._send_vm_reports()
+            finally:
+                self.report_in_progress.clear()
+
+
+    async def _send_vm_reports(self):
         """
         Generate seluruh VM report dan kirim melalui Discord webhook.
         """
@@ -727,7 +718,8 @@ class ZabbixCog(commands.Cog):
             # GLOBAL SUMMARY
             # ====================================================
 
-            summary = build_global_report_text(
+            summary = await asyncio.to_thread(
+                build_global_report_text,
                 reports,
                 hours=2,
             )
@@ -745,6 +737,7 @@ class ZabbixCog(commands.Cog):
     async def report_scheduler(self):
 
         await self.bot.wait_until_ready()
+        await self.alert_baseline_ready.wait()
 
         while not self.bot.is_closed():
             now = datetime.now()
@@ -821,7 +814,7 @@ class ZabbixCog(commands.Cog):
         timestamp = datetime.fromtimestamp(event["clock"])
 
         embed = discord.Embed(
-            title="🚨 Zabbix Problem Baru",
+            title="🚨 Zabbix Problem",
             description=event["name"],
             color=severity_colors.get(severity, discord.Color.red()),
             timestamp=timestamp,
@@ -844,36 +837,44 @@ class ZabbixCog(commands.Cog):
 
     async def problem_alert_monitor(self):
         await self.bot.wait_until_ready()
-        last_event_id = load_alert_event_id()
+        last_event_id = None
 
         while not self.bot.is_closed():
             try:
-                events = await asyncio.to_thread(
-                    get_zabbix_events_after,
-                    last_event_id,
-                )
-
                 if last_event_id is None:
-                    if events:
-                        last_event_id = max(
-                            event["eventid"] for event in events
-                        )
-                        save_alert_event_id(last_event_id)
-                        logger.info(
-                            "Zabbix alert monitor baseline set to event %s",
+                    latest_events = await asyncio.to_thread(
+                        get_zabbix_events_after,
+                        None,
+                    )
+                    last_event_id = get_latest_zabbix_event_id(latest_events)
+                    self.alert_baseline_ready.set()
+                    logger.info(
+                        "Zabbix alert monitor startup baseline set to event %s",
+                        last_event_id,
+                    )
+                else:
+                    if self.report_in_progress.is_set():
+                        await asyncio.sleep(ALERT_POLL_SECONDS)
+                        continue
+
+                    async with self.report_lock:
+                        if self.report_in_progress.is_set():
+                            continue
+
+                        events = await asyncio.to_thread(
+                            get_zabbix_events_after,
                             last_event_id,
                         )
-                else:
-                    for event in events:
-                        if event["value"] == 1:
-                            await self.send_problem_alert(event)
-                            logger.info(
-                                "Sent Zabbix problem alert for event %s",
-                                event["eventid"],
-                            )
 
-                        last_event_id = event["eventid"]
-                        save_alert_event_id(last_event_id)
+                        for event in events:
+                            if is_unresolved_problem_event(event):
+                                await self.send_problem_alert(event)
+                                logger.info(
+                                    "Sent Zabbix problem alert for event %s",
+                                    event["eventid"],
+                                )
+
+                            last_event_id = event["eventid"]
 
             except asyncio.CancelledError:
                 raise

@@ -1303,6 +1303,7 @@ def get_zabbix_events_after(eventid: int | None = None) -> list:
             "name",
             "severity",
             "value",
+            "r_eventid",
         ],
         "source": 0,
         "object": 0,
@@ -1343,6 +1344,7 @@ def get_zabbix_events_after(eventid: int | None = None) -> list:
                 "name": event.get("name", "Unknown problem"),
                 "severity": int(event.get("severity", 0)),
                 "value": int(event.get("value", 0)),
+                "r_eventid": int(event.get("r_eventid", 0) or 0),
                 "hosts": [
                     host.get("name") or host.get("host", "Unknown")
                     for host in hosts
@@ -1354,3 +1356,14 @@ def get_zabbix_events_after(eventid: int | None = None) -> list:
     except requests.exceptions.RequestException as error:
         logger.exception("Gagal mengambil event baru dari Zabbix")
         raise RuntimeError("Gagal mengambil event baru dari Zabbix") from error
+
+
+def is_unresolved_problem_event(event: dict) -> bool:
+    return event.get("value") == 1 and event.get("r_eventid", 0) == 0
+
+
+def get_latest_zabbix_event_id(events: list[dict]) -> int:
+    return max(
+        (event["eventid"] for event in events),
+        default=0,
+    )
