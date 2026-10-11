@@ -5,7 +5,6 @@ import discord
 from discord.ext import commands
 
 from config import DISCORD_TOKEN, ensure_hanes_env
-from services.hanes_bridge import get_latest_run_summary, run_hanes_monitor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
