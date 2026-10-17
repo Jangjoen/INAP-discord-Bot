@@ -28,6 +28,18 @@ async def load_cogs():
     except Exception as e:
         logger.error(f"Failed to load Zabbix cogs: {e}")
 
+    try:
+        await bot.load_extension("cogs.kafka_cogs")
+        logger.info("Kafka cogs loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load Kafka cogs: {e}")
+
+    try:
+        await bot.load_extension("cogs.uptime_cogs")
+        logger.info("Uptime cogs loaded successfully")
+    except Exception as e:
+        logger.error(f"Failed to load Uptime cogs: {e}")
+
 
 @bot.command(name="ping")
 async def ping(ctx):

@@ -742,33 +742,70 @@ class ZabbixCog(commands.Cog):
         while not self.bot.is_closed():
             now = datetime.now()
             current_slot = get_report_slot(now)
-            last_reported_slot = load_last_report_slot()
+            last_zabbix_slot = load_last_report_slot()
+            zabbix_due = (
+                last_zabbix_slot is None
+                or current_slot > last_zabbix_slot
+            )
+            kafka_cog = self.bot.get_cog("KafkaCog")
+            kafka_due = (
+                kafka_cog is None
+                or kafka_cog.is_scheduled_report_due(current_slot)
+            )
+            uptime_cog = self.bot.get_cog("UptimeCog")
+            uptime_due = (
+                uptime_cog is None
+                or uptime_cog.is_scheduled_report_due(current_slot)
+            )
 
-            if (
-                last_reported_slot is None
-                or current_slot > last_reported_slot
-            ):
+            if zabbix_due or kafka_due or uptime_due:
                 successful = False
 
                 try:
                     logger.info(
-                        "Automatic VM report started for slot %s",
+                        "Automatic Zabbix/Kafka/Uptime Kuma report started for slot %s",
                         current_slot.strftime("%d/%m/%Y %H:%M"),
                     )
-                    successful = await self.send_vm_reports()
 
-                    if successful:
-                        save_last_report_slot(current_slot)
-                    else:
+                    async with self.report_lock:
+                        self.report_in_progress.set()
+                        try:
+                            successful = True
+
+                            if zabbix_due:
+                                successful = await self._send_vm_reports()
+                                if successful:
+                                    save_last_report_slot(current_slot)
+
+                            if successful and kafka_due:
+                                if kafka_cog is None:
+                                    raise RuntimeError(
+                                        "KafkaCog belum dimuat"
+                                    )
+                                successful = await kafka_cog.send_scheduled_report(
+                                    current_slot
+                                )
+                            if successful and uptime_due:
+                                if uptime_cog is None:
+                                    raise RuntimeError(
+                                        "UptimeCog belum dimuat"
+                                    )
+                                successful = await uptime_cog.send_scheduled_report(
+                                    current_slot
+                                )
+                        finally:
+                            self.report_in_progress.clear()
+
+                    if not successful:
                         logger.warning(
-                            "Report slot %s belum terkirim; akan dicoba lagi.",
+                            "Report slot %s belum selesai; akan dicoba lagi.",
                             current_slot.strftime("%d/%m/%Y %H:%M"),
                         )
 
                 except Exception:
                     successful = False
                     logger.exception(
-                        "Automatic VM report failed; will retry"
+                        "Automatic Zabbix/Kafka/Uptime Kuma report failed; will retry"
                     )
 
                 if not successful:

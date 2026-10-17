@@ -15,6 +15,11 @@ ZABBIX_URL = os.getenv("ZABBIX_URL", "http://localhost:8080/api_jsonrpc.php").st
 ZABBIX_AUTH = os.getenv("ZABBIX_AUTH", "").strip()
 
 
+UPTIME_KUMA_URL = os.getenv("UPTIME_KUMA_URL")
+UPTIME_KUMA_USERNAME = os.getenv("UPTIME_KUMA_USERNAME")
+UPTIME_KUMA_PASSWORD = os.getenv("UPTIME_KUMA_PASSWORD")
+
+
 # WEBHOOK
 TEST_WEBHOOK_URL = os.getenv(
     "TEST_WEBHOOK_URL"
@@ -26,6 +31,14 @@ MAIN2_WEBHOOK_URL = os.getenv(
 
 MAIN_WEBHOOK_URL = os.getenv(
     "MAIN_WEBHOOK_URL"
+)
+
+KAFKA_WEBHOOK_URL = os.getenv(
+    "KAFKA_WEBHOOK_URL"
+)
+
+UPTIME_KUMA_WEBHOOK_URL = os.getenv(
+    "UPTIME_KUMA_WEBHOOK_URL"
 )
 
 # Zabbix Host Mapping

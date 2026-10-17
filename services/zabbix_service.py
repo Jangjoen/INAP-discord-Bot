@@ -2,6 +2,7 @@ import requests
 # from datetime import datetime
 import datetime
 import logging
+from services.problem_translator import translate_problem
 from config import HOST_MAP, ZABBIX_AUTH, ZABBIX_URL, ITEMIDS_CPU_MAP, ITEMIDS_MEMORY_MAP, ITEMIDS_DISK_MAP, DISK_HOST_MAP
 from config import (
     CPU_WARNING_THRESHOLD,
@@ -711,9 +712,8 @@ def get_active_problems(hours=None) -> list:
                 "eventid": problem.get("eventid"),
                 "objectid": problem.get("objectid"),
 
-                "name": problem.get(
-                    "name",
-                    "Unknown problem"
+                "name": translate_problem(
+                    problem.get("name") or "Unknown problem"
                 ),
 
                 "severity_code": severity_code,
@@ -823,7 +823,9 @@ def get_resolved_problems(hours=2) -> list:
             resolved_problems.append({
                 "eventid": event.get("eventid"),
                 "objectid": event.get("objectid"),
-                "name": event.get("name", "Unknown problem"),
+                "name": translate_problem(
+                    event.get("name") or "Unknown problem"
+                ),
                 "severity_code": severity_code,
                 "severity_emoji": SEVERITY_EMOJI.get(
                     severity_code,
@@ -1042,6 +1044,17 @@ def get_monitored_hosts() -> list:
         raise Exception(
             "⚠️ Gagal menghubungi server monitoring."
         )
+
+def is_unresolved_problem_event(event: dict) -> bool:
+    return event.get("value") == 1 and event.get("r_eventid", 0) == 0
+
+
+def get_latest_zabbix_event_id(events: list[dict]) -> int:
+    return max(
+        (event["eventid"] for event in events),
+        default=0,
+    )
+    
 
 # DIVIDER FOR HISTORY ----------------------------------------------
 
@@ -1341,7 +1354,9 @@ def get_zabbix_events_after(eventid: int | None = None) -> list:
                 "eventid": int(event.get("eventid", 0)),
                 "objectid": event.get("objectid"),
                 "clock": int(event.get("clock", 0)),
-                "name": event.get("name", "Unknown problem"),
+                "name": translate_problem(
+                    event.get("name") or "Unknown problem"
+                ),
                 "severity": int(event.get("severity", 0)),
                 "value": int(event.get("value", 0)),
                 "r_eventid": int(event.get("r_eventid", 0) or 0),
@@ -1358,12 +1373,3 @@ def get_zabbix_events_after(eventid: int | None = None) -> list:
         raise RuntimeError("Gagal mengambil event baru dari Zabbix") from error
 
 
-def is_unresolved_problem_event(event: dict) -> bool:
-    return event.get("value") == 1 and event.get("r_eventid", 0) == 0
-
-
-def get_latest_zabbix_event_id(events: list[dict]) -> int:
-    return max(
-        (event["eventid"] for event in events),
-        default=0,
-    )
