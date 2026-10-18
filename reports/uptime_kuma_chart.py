@@ -28,7 +28,6 @@ COLORS = {
 
 
 
-
 def format_history_time(value) -> str:
     if not value:
         return "-"
@@ -123,7 +122,7 @@ def generate_uptime_kuma_chart(report: dict) -> BytesIO:
             label,
             fontsize=23,
             color=TEXT,
-            fontweight="semibold",
+            fontweight="700",
             ha="center",
             va="center",
         )

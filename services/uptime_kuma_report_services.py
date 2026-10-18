@@ -12,6 +12,13 @@ async def send_uptime_kuma_report(webhook):
         get_uptime_kuma_report
     )
 
+    # Ambil statistik status monitor.
+    counts = report["counts"]
+    up = counts.get("UP", 0)
+    down = counts.get("DOWN", 0)
+    maintenance = counts.get("MAINTENANCE", 0)
+    pause = counts.get("PAUSE", 0)
+
     # Generate satu gambar berisi statistik + history.
     image_buffer = await asyncio.to_thread(
         generate_uptime_kuma_chart,
@@ -26,7 +33,12 @@ async def send_uptime_kuma_report(webhook):
         await webhook.send(
             content=(
                 "**Uptime Kuma | INAP**\n"
-                f"Service Monitoring · Checked at: {checked_at}"
+                f"Service Monitoring · Checked at: {checked_at}\n\n"
+                "**====== Stats ======**\n"
+                f"🟢 Up: **{up}**\n"
+                f"🔴 Down: **{down}**\n"
+                f"🔵 Maintenance: **{maintenance}**\n"
+                f"⚫ Pause: **{pause}**"
             ),
             file=discord.File(
                 image_buffer,
