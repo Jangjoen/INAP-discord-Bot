@@ -33,8 +33,8 @@ async def send_uptime_kuma_report(webhook):
         await webhook.send(
             content=(
                 "**Uptime Kuma | INAP**\n"
-                f"Service Monitoring · Checked at: {checked_at}\n\n"
-                "**====== Stats ======**\n"
+                f"Service Monitoring · Checked at : {checked_at}\n\n"
+                "**━━━━━━━━━━  Stats  ━━━━━━━━━━**\n"
                 f"🟢 Up: **{up}**\n"
                 f"🔴 Down: **{down}**\n"
                 f"🔵 Maintenance: **{maintenance}**\n"

@@ -678,18 +678,18 @@ class ZabbixCog(commands.Cog):
 
             period_start = datetime.fromtimestamp(
                 period["start"]
-            ).strftime("%H:%M")
+            ).strftime("%d-%m-%Y %H:%M")
 
             period_end = datetime.fromtimestamp(
                 period["end"]
-            ).strftime("%H:%M")
+            ).strftime("%d-%m-%Y %H:%M")
 
             checked_at = datetime.fromtimestamp(
                 first_report["checked_at"]
             ).strftime("%H:%M")
 
             await webhook.send(
-                " ============== **ZABBIX INAP REPORT** ==============\n\n"
+                " =============  **ZABBIX INAP REPORT**  =============\n\n"
                 f"Period: {period_start} - {period_end}\n"
                 f"Checked at: {checked_at}"
             )

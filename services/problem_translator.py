@@ -6,15 +6,15 @@ PROBLEM_TRANSLATIONS = {
         "Memori Cadangan (Swap) pada server mulai menipis (kurang dari 50%)"
     ),
 
-    "Clickhouse has been restarted" : (
+    "ClickHouse has been restarted" : (
         "Layanan Clickhouse telah di-restart" 
     ), 
 
-    "Clickhouse: Port 8123 is unavailable" : (
+    "ClickHouse: Port 8123 is unavailable" : (
         "Layanan Clickhouse tidak bisa diakses, Port 8123 tidak tersedia"
     ),   
 
-    "/data: Disk space low (used > 80%)" : (
+    "/data: Disk space is low (used > 80%)" : (
         "Penyimpanan /data hampir penuh (telah digunakan > 80%)"
     ),
 
@@ -30,12 +30,24 @@ PROBLEM_TRANSLATIONS = {
         "vda: Kinerja penyimpanan data (disk) menurun. Proses membaca atau menyimpan data berjalan lebih lambat dari biasanya selama 15 menit terakhir."
     ),  
 
+    "vdd: Disk read/write request responses are too high (read > 20 ms for 15m or write > 20 ms for 15m)" : (
+            "vdd: Kinerja penyimpanan data (disk) menurun. Proses membaca atau menyimpan data berjalan lebih lambat dari biasanya selama 15 menit terakhir."
+    ),
+
+    "vdb: Disk read/write request responses are too high (read > 20 ms for 15m or write > 20 ms for 15m)" : (
+            "vdb: Kinerja penyimpanan data (disk) menurun. Proses membaca atau menyimpan data berjalan lebih lambat dari biasanya selama 15 menit terakhir."
+    ),  
+
     "Zabbix agent is not available (for 3m)" : (
         "Zabbix agent tidak tersedia pada server"
     ),
 
     "ClickHouse: Failed to fetch info data (or no data for 30m)" : (
         "Tidak ada data yang diterima dari database(Clickhouse) selama 30 menit terakhir atau terjadi gangguan saat pengambilan data."
+    ),
+
+    "ClickHouse: Too many MergeTree parts (over 90% of 300)" : (
+        "ClickHouse: Jumlah part (pecahan data) terlalu banyak dan sudah mencapai lebih dari 90% dari batas yang ditentukan (300 part)."
     ),
 
 }
