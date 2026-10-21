@@ -10,6 +10,10 @@ PROBLEM_TRANSLATIONS = {
         "Layanan Clickhouse telah di-restart" 
     ), 
 
+    "ClickHouse: has been restarted (uptime < 10m)" : (
+        "Layanan Clickhouse telah di-restart (baru berjalan kurang dari 10 menit)"
+    ),
+
     "ClickHouse: Port 8123 is unavailable" : (
         "Layanan Clickhouse tidak bisa diakses, Port 8123 tidak tersedia"
     ),   
