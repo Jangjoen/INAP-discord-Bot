@@ -54,6 +54,22 @@ PROBLEM_TRANSLATIONS = {
         "ClickHouse: Jumlah part (pecahan data) terlalu banyak dan sudah mencapai lebih dari 90% dari batas yang ditentukan (300 part)."
     ),
 
+    "System time is out of sync (diff with Zabbix server > 60s)" : (
+        "Waktu pada sistem tidak sinkron dengan Zabbix server (berbeda lebih dari 60 detik)"
+    ),
+
+    "ClickHouse: Too many distributed files to insert (over 600 for 5 min)" : (
+        "Jumlah file pending pada tabel Distributed yang menunggu dikirim/di-insert ke node tujuan sudah lebih dari 600 file selama 5 menit"    
+    ),
+
+    "Load average is too high (per CPU load over 1.5 for 5m)" : (
+        "Beban kerja server terlalu tinggi selama 5 menit terakhir. Nilai load average per CPU berada di atas 1.5, CPU mulai kewalahan menangani proses yang berjalan."
+    ),
+
+    "ClickHouse: There are queries running more than 600 seconds" : (
+        "ClickHouse: Ada beberapa query yang berjalan lebih dari 600 detik"
+    ),
+
 }
 
 CLICKHOUSE_REPLICA_PROBLEM = re.compile(
