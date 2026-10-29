@@ -42,6 +42,10 @@ PROBLEM_TRANSLATIONS = {
             "vdb: Kinerja penyimpanan data (disk) menurun. Proses membaca atau menyimpan data berjalan lebih lambat dari biasanya selama 15 menit terakhir."
     ),  
 
+    "vdc: Disk read/write request responses are too high (read > 20 ms for 15m or write > 20 ms for 15m)" : (
+        "vdc: Kinerja penyimpanan data (disk) menurun. Proses membaca atau menyimpan data berjalan lebih lambat dari biasanya selama 15 menit terakhir."  
+    ),
+
     "Zabbix agent is not available (for 3m)" : (
         "Zabbix agent tidak tersedia pada server"
     ),

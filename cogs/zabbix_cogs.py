@@ -22,6 +22,7 @@ from services.zabbix_service import (
 )
 from services.report_services import (
     generate_all_vm_reports,
+    generate_vm_report_image,
     build_report_summary,
 )
 from config import REPORT_CHANNEL_ID
@@ -261,7 +262,55 @@ class ZabbixCog(commands.Cog):
             )
             await ctx.send(embed=embed)
             logger.exception(f"Error in Disk command for host {kode}")
-    
+
+    @commands.command(name="server")
+    async def server_report_command(self, ctx, kode: str = None):
+        """Generate a chart report for one server. Usage: !server <kode>"""
+        if not kode:
+            await ctx.send("Penggunaan: `!server <kode>` (contoh: `!server 36`)")
+            return
+
+        try:
+            async with self.report_lock:
+                self.report_in_progress.set()
+                try:
+                    result = await asyncio.to_thread(
+                        generate_vm_report_image,
+                        kode,
+                        hours=2,
+                    )
+                finally:
+                    self.report_in_progress.clear()
+        except ValueError as error:
+            await ctx.send(str(error))
+            return
+        except Exception as error:
+            logger.exception("Gagal membuat report server %s", kode)
+            await ctx.send(f"Gagal membuat report server {kode}: {error}")
+            return
+
+        image = result["image"]
+        filename = f"server_{kode}_report.png"
+        image.seek(0)
+        report = result["report"]
+        period_start = report["period"]["start"]
+        period_end = report["period"]["end"]
+        if period_start is not None and period_end is not None:
+            period_text = (
+                f"**━━━━━━━━━  INAP {kode}  ━━━━━━━━━**\n"
+                f"Period : "
+                f"{datetime.fromtimestamp(period_start).strftime('%d-%m-%Y %H:%M')} - "
+                f"{datetime.fromtimestamp(period_end).strftime('%d-%m-%Y %H:%M')}"
+            )
+        else:
+            period_text = "Period: data tidak tersedia"
+
+        report_file = discord.File(image, filename=filename)
+        try:
+            await ctx.send(content=period_text, file=report_file)
+        finally:
+            report_file.close()
+
     @commands.command(name="allcpu")
     async def all_cpu_command(self, ctx):
         """Check CPU utilization for all hosts"""
@@ -740,6 +789,10 @@ class ZabbixCog(commands.Cog):
         await self.alert_baseline_ready.wait()
 
         while not self.bot.is_closed():
+            if not self.bot.reporting_enabled:
+                await asyncio.sleep(5)
+                continue
+
             now = datetime.now()
             current_slot = get_report_slot(now)
             last_zabbix_slot = load_last_report_slot()
